@@ -200,14 +200,11 @@ The Inventory Service reads the `INVENTORY_DELAY_SECONDS` environment variable (
      -d '{"item_id":"sku-123","quantity":2}'
    ```
 
-Actual output (returns after about 1 second, not 2):
-```text
-HTTP/1.1 504 GATEWAY TIMEOUT
-Content-Type: application/json
+Result: the Order Service returns **504 Gateway Timeout** after about 1 second (`1.012 total`), not 2:
 
-{"error":"inventory service timed out after 1s","status":"failed"}
-  0.01s user 0.01s system 1% cpu 1.023 total
-```
+![REST timeout: Order Service returns 504 after ~1s](screenshots/rest-timeout.png)
+
+Logs from an earlier run of the same test:
 
 Order Service log:
 ```text
@@ -223,19 +220,14 @@ Inventory Service log (slow mode):
 
 ## REST Order Service still running
 
-Right after the timeout:
+After the timeout, without restarting anything:
 ```bash
 curl -i http://127.0.0.1:8080/health
 ```
-```text
-HTTP/1.1 200 OK
-Content-Type: application/json
 
-{"status":"ok"}
-```
-```text
-2026-10-11 20:24:21,763 [rest-order] 127.0.0.1 - - [11/Oct/2026 20:24:21] "GET /health HTTP/1.1" 200 -
-```
+The same Order Service that returned **504** at 03:36:59 still answers **200 OK `{"status":"ok"}`** at 03:39:29:
+
+![REST Order Service still healthy after the timeout](screenshots/rest-health.png)
 
 **Recovery:** restart the Inventory Service normally (`python inventory_service.py`) and the same order returns `200 OK` / `"status":"accepted"` again, with no Order Service restart. If the Inventory Service is stopped completely, the Order Service returns `503 {"error":"inventory service unavailable","status":"failed"}` and keeps running.
 
@@ -393,14 +385,11 @@ Order Service ──gRPC CheckInventory (deadline 1s)──► Inventory Service
      -d '{"item_id":"sku-123","quantity":2}'
    ```
 
-Actual output (returns after about 1 second):
-```text
-HTTP/1.1 504 GATEWAY TIMEOUT
-Content-Type: application/json
+Result: the RPC fails with **`DEADLINE_EXCEEDED`** after about 1 second (`1.018 total`), and the Order Service maps it to **504 Gateway Timeout**:
 
-{"error":"Deadline Exceeded","grpc_status":"DEADLINE_EXCEEDED","order":{"item_id":"sku-123","quantity":2},"status":"failed"}
-  0.01s user 0.01s system 1% cpu 1.027 total
-```
+![gRPC deadline: DEADLINE_EXCEEDED mapped to 504 after ~1s](screenshots/grpc-deadline.png)
+
+Logs from an earlier run of the same test:
 
 Order Service log:
 ```text
@@ -416,19 +405,14 @@ Inventory Service log (slow mode):
 
 ## gRPC Order Service still running
 
-Right after the deadline failure:
+After the deadline failure, without restarting anything:
 ```bash
 curl -i http://127.0.0.1:8090/health
 ```
-```text
-HTTP/1.1 200 OK
-Content-Type: application/json
 
-{"status":"ok"}
-```
-```text
-2026-10-11 20:24:43,092 [grpc-order] 127.0.0.1 - - [11/Oct/2026 20:24:43] "GET /health HTTP/1.1" 200 -
-```
+The same Order Service that returned **504 `DEADLINE_EXCEEDED`** at 03:43:12 still answers **200 OK `{"status":"ok"}`** at 03:44:40:
+
+![gRPC Order Service still healthy after DEADLINE_EXCEEDED](screenshots/grpc-health.png)
 
 **Recovery:** restart the gRPC Inventory Service normally (`python inventory_service.py`) and the same order returns `200 OK` / `"grpc_status":"OK"` again, with no Order Service restart. If the Inventory Service is stopped completely, the Order Service returns `503` with `"grpc_status":"UNAVAILABLE"` and keeps running.
 
@@ -445,7 +429,14 @@ Content-Type: application/json
 
 In both versions, the Order Service process was never restarted during the test. It caught the failure, returned a clean error, and kept serving requests.
 
-> **Screenshots (optional):** all output above is real terminal output from running the code. If your submission requires screenshots, run the timeout/deadline steps above in side-by-side terminals and insert screenshots here showing (1) the 504 response and (2) the `/health` 200 response that follows it, for each version.
+### Screenshots
+
+| Evidence | Screenshot |
+|---|---|
+| REST timeout handling | [screenshots/rest-timeout.png](screenshots/rest-timeout.png) |
+| REST Order Service still running | [screenshots/rest-health.png](screenshots/rest-health.png) |
+| gRPC deadline handling | [screenshots/grpc-deadline.png](screenshots/grpc-deadline.png) |
+| gRPC Order Service still running | [screenshots/grpc-health.png](screenshots/grpc-health.png) |
 
 ---
 
